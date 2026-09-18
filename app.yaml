@@ -1,0 +1,8 @@
+command:
+  - uv
+  - run
+  - collibra-preflight-server
+
+env:
+  - name: UV_DEFAULT_INDEX
+    value: "https://pypi.org/simple"

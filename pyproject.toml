@@ -1,0 +1,30 @@
+[project]
+name = "collibra-preflight-mcp"
+version = "0.1.0"
+description = "Mock Collibra Pre-Flight Check MCP Server for Databricks Apps"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.12,<0.116",
+    "mcp[cli]>=1.14.0,<2",
+    "uvicorn>=0.34.2,<0.35",
+    "pydantic>=2,<3",
+    "fastmcp>=2.12.5,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+collibra-preflight-server = "server.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

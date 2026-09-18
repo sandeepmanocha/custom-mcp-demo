@@ -1,0 +1,6 @@
+resources:
+  apps:
+    collibra_preflight_app:
+      name: ${var.app_name}
+      description: "Mock Collibra pre-flight check MCP server"
+      source_code_path: ..

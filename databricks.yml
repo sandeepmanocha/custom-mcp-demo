@@ -1,0 +1,31 @@
+bundle:
+  name: collibra-preflight-mcp
+
+variables:
+  app_name:
+    default: mcp-collibra-preflight-demo
+  databricks_profile:
+    description: Databricks CLI profile that points at your workspace
+    default: DEFAULT
+
+include:
+  - resources/*.yml
+
+sync:
+  exclude:
+    - "__pycache__"
+    - "*.pyc"
+    - ".venv"
+    - ".databricks"
+    - "tests"
+    - ".pytest_cache"
+    - "sample_code.md"
+    - ".vscode"
+
+targets:
+  dev:
+    default: true
+    workspace:
+      profile: ${var.databricks_profile}
+    variables:
+      app_name: mcp-collibra-preflight-demo
