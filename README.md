@@ -20,6 +20,27 @@ Demo outcomes:
 
 App name must start with `mcp-` so AI Playground can discover it.
 
+Official docs:
+
+- [Create a custom Databricks app](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/create-custom-app) — create the app record; custom apps are **not** deployed automatically.
+- [Deploy a Databricks app](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/deploy) — upload source, install dependencies, start the process.
+- [Configure execution with `app.yaml`](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/app-runtime)
+
+## Why `app.yaml` (and `resources/app.yml`)
+
+Databricks Apps looks at the **root of the source directory** you deploy. Two YAML files in this repo do different jobs.
+
+**[`app.yaml`](app.yaml)** — Apps **runtime**. Databricks reads this after it installs dependencies. Without it, a Python-only app defaults to `python <first .py file>` ([deployment logic](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/deploy#deployment-logic)), which is wrong for this MCP server. This file tells the runtime:
+
+- `command: [uv, run, collibra-preflight-server]` — entry point from `pyproject.toml` (`server.main:main`), bound in code to `DATABRICKS_APP_PORT` / 8000.
+- `env.UV_DEFAULT_INDEX` — install packages from public PyPI.
+
+`requirements.txt` contains only `uv`. The platform `pip install`s that, then the `command` uses `uv run` against `pyproject.toml` + `uv.lock`. That matches the documented Python path: `requirements.txt` **or** `pyproject.toml` + `uv.lock`.
+
+**[`resources/app.yml`](resources/app.yml)** — **DABs only**. It is *not* the Apps runtime file. Bundle deploy uses it to create the app resource (`name`, `description`, `source_code_path`). If you deploy with `databricks apps create` / `sync` / `apps deploy`, you can ignore this file.
+
+The file must sit at the project root and may be `.yaml` or `.yml`. See [app.yaml settings](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/app-runtime).
+
 ## 1. Clone and run tests locally
 
 ```bash
@@ -54,7 +75,7 @@ Use `-p YOUR_PROFILE` on every CLI command below.
 
 ## 4. Deploy with Databricks Apps CLI
 
-This is the direct Apps workflow: create the app, upload source, deploy.
+Matches [create a custom app](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/create-custom-app) then [deploy from a workspace folder](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/deploy#deploy-from-a-workspace-folder): create the app, sync files, deploy. Databricks does not auto-deploy custom code.
 
 ```bash
 export APP_NAME=mcp-collibra-preflight-demo
@@ -167,10 +188,12 @@ claude mcp add-json collibra-preflight \
 ## Layout
 
 ```
-app.yaml              Databricks Apps command
-databricks.yml        DABs bundle
-resources/app.yml     App resource
+app.yaml              Apps runtime: command + env (required for this server)
+databricks.yml        DABs bundle (Makefile path)
+resources/app.yml     DAB app resource (Makefile path only)
 server/app.py         FastAPI + FastMCP (stateless HTTP)
 server/tools.py       Mock data + MCP tools
+requirements.txt      `uv` (Apps pip-installs this first)
+pyproject.toml        Package + `collibra-preflight-server` script
 Makefile
 ```
