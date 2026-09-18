@@ -18,6 +18,8 @@ Demo outcomes:
 - A Databricks workspace with **Apps** enabled
 - Permission to create Databricks Apps
 
+App name must start with `mcp-` so AI Playground can discover it.
+
 ## 1. Clone and run tests locally
 
 ```bash
@@ -30,7 +32,7 @@ uv run pytest -q
 ## 2. Run the MCP server locally
 
 ```bash
-make local-server
+uv run collibra-preflight-server
 ```
 
 In another terminal:
@@ -45,40 +47,84 @@ MCP endpoint: `http://localhost:8000/mcp`
 
 ```bash
 databricks auth login --host https://YOUR_WORKSPACE.cloud.databricks.com --profile YOUR_PROFILE
-databricks auth profiles   # confirm the profile is Valid
+databricks auth profiles
 ```
 
-Set the profile when you deploy:
+Use `-p YOUR_PROFILE` on every CLI command below.
+
+## 4. Deploy with Databricks Apps CLI
+
+This is the direct Apps workflow: create the app, upload source, deploy.
 
 ```bash
-export DB_PROFILE=YOUR_PROFILE
+export APP_NAME=mcp-collibra-preflight-demo
+export PROFILE=YOUR_PROFILE
+
+databricks apps create $APP_NAME \
+  --description "Mock Collibra pre-flight check MCP server" \
+  -p $PROFILE
+
+DATABRICKS_USERNAME=$(databricks current-user me -p $PROFILE | jq -r .userName)
+
+databricks workspace mkdirs "/Workspace/Users/$DATABRICKS_USERNAME/$APP_NAME" -p $PROFILE
+
+databricks sync . "/Users/$DATABRICKS_USERNAME/$APP_NAME" -p $PROFILE
+
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$DATABRICKS_USERNAME/$APP_NAME" \
+  -p $PROFILE
 ```
 
-Or pass it on every `make` command: `make all DB_PROFILE=YOUR_PROFILE`.
+Check status, URL, and logs:
 
-`databricks.yml` uses `workspace.profile` (no hardcoded workspace host). The CLI profile supplies the host.
+```bash
+databricks apps get $APP_NAME -p $PROFILE
+databricks apps logs $APP_NAME -p $PROFILE
+```
 
-## 4. Deploy as a Databricks App
+The MCP endpoint is `{app.url}/mcp/` (trailing slash).
 
-App name must start with `mcp-` so AI Playground can discover it.
+Redeploy after code changes:
+
+```bash
+databricks sync . "/Users/$DATABRICKS_USERNAME/$APP_NAME" -p $PROFILE
+databricks apps deploy $APP_NAME \
+  --source-code-path "/Workspace/Users/$DATABRICKS_USERNAME/$APP_NAME" \
+  -p $PROFILE
+```
+
+If `uv.lock` was generated against an internal PyPI proxy, rewrite package URLs to `files.pythonhosted.org` before deploy. Databricks Apps cannot reach some private indexes.
+
+## 5. Deploy with Makefile (DABs)
+
+Use this if you want Databricks Asset Bundles to own the app resource. `databricks.yml` uses `workspace.profile` (no hardcoded host).
 
 ```bash
 make all DB_PROFILE=YOUR_PROFILE
 ```
 
-That runs:
+That runs tests, `databricks bundle validate`, `databricks bundle deploy`, `databricks bundle run collibra_preflight_app`, then a smoke check.
 
-1. `pytest`
-2. `databricks bundle validate --strict`
-3. `databricks bundle deploy` (creates/uploads the app)
-4. `databricks bundle run collibra_preflight_app` (starts the app)
-5. `databricks apps get` smoke check
+| Target | Action |
+| --- | --- |
+| `make test` | Run pytest |
+| `make local-server` | `uv run collibra-preflight-server` |
+| `make validate` | `databricks bundle validate --strict` |
+| `make deploy` | `databricks bundle deploy` |
+| `make app-deploy` | `databricks bundle run collibra_preflight_app` |
+| `make smoke` | `databricks apps get` and assert RUNNING |
+| `make all` | test + deploy + start + smoke |
 
-Redeploy after code changes with the same command.
+Equivalent DAB commands without Make:
 
-If `uv.lock` is generated on a machine that uses an internal PyPI proxy, rewrite package URLs to `files.pythonhosted.org` before deploy. Databricks Apps cannot reach some private indexes.
+```bash
+databricks bundle validate --strict -t dev -p YOUR_PROFILE --var databricks_profile=YOUR_PROFILE
+databricks bundle deploy -t dev -p YOUR_PROFILE --var databricks_profile=YOUR_PROFILE --auto-approve
+databricks bundle run collibra_preflight_app -t dev -p YOUR_PROFILE --var databricks_profile=YOUR_PROFILE
+databricks apps get mcp-collibra-preflight-demo -p YOUR_PROFILE
+```
 
-## 5. Try it in AI Playground
+## 6. Try it in AI Playground
 
 1. Open **AI Playground** in your workspace.
 2. Pick a **Tools enabled** model. Do **not** use GPT-5.6 Sol with default reasoning — it rejects function tools on `/v1/chat/completions`. Use Claude Sonnet or set `reasoning_effort` to `none`.
@@ -88,11 +134,9 @@ If `uv.lock` is generated on a machine that uses an internal PyPI proxy, rewrite
    - `Now check the REVENUE data product.`
    - `List all available data products.`
 
-MCP URL after deploy: `{app.url}/mcp/` (trailing slash).
-
 Logs: `{app.url}/logz` or `databricks apps logs mcp-collibra-preflight-demo -p YOUR_PROFILE`.
 
-## 6. Connect Claude Code (optional)
+## 7. Connect Claude Code (optional)
 
 Databricks Apps MCP servers need **OAuth**, not a PAT. See [Connect MCPs to AI assistants](https://docs.databricks.com/aws/en/agents/mcp-tools/connect-clients).
 
@@ -115,18 +159,6 @@ claude mcp add-json collibra-preflight \
 | `get_lineage` | Upstream / downstream (mocked) |
 | `check_data_quality` | Dimension scores |
 | `health` | Server liveness |
-
-## Makefile
-
-| Target | Action |
-| --- | --- |
-| `make test` | Run pytest |
-| `make local-server` | Serve on port 8000 |
-| `make validate` | Bundle validate |
-| `make deploy` | Upload via DABs |
-| `make app-deploy` | Start the app |
-| `make smoke` | Print URL and assert RUNNING |
-| `make all` | test + deploy + start + smoke |
 
 ## Swap mock Collibra for real Collibra
 
